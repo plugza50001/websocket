@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Machine Data</title>
+
+    <!-- Load Chart.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+
+
+    <!-- Styling -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #chart-container {
+            width: 80%;
+            margin: 20px auto;
+        }
+
+        #apiKey-container {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Realtime Machine Data</h2>
+
+    <!-- Form for entering API Key -->
+    <div id="apiKey-container">
+        <label for="apiKey">Enter API Key:</label>
+        <input type="text" id="apiKey" placeholder="Enter API Key">
+        <button onclick="connectWebSocket()">Connect</button>
+    </div>
+
+    <div id="chart-container">
+        <canvas id="machineDataChart"></canvas>
+    </div>
+    <div id="error-message" style="color: red; font-size: 1.2em;"></div>
+
+    <script>
+        let ws;
+        let machineDataChart;
+        const chartData = {
+            labels: [],
+            datasets: [{
+                label: 'Power Consumption',
+                data: [],
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderWidth: 1,
+                fill: true
+            }]
+        };
+        const dataLimit = 20;
+
+        // Create the chart when the page loads
+        window.onload = function () {
+            const ctx = document.getElementById('machineDataChart').getContext('2d');
+            machineDataChart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'second',
+                                displayFormats: {
+                                    second: 'h:mm:ss a'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Power (W)'
+                            }
+                        }
+                    }
+                }
+            });
+        };
+
+        // Function to connect WebSocket with API Key
+        function connectWebSocket() {
+            const apiKey = document.getElementById('apiKey').value;
+            if (!apiKey) {
+                alert("Please enter an API key.");
+                return;
+            }
+
+            // Close any existing WebSocket connection
+            if (ws) {
+                ws.close();
+            }
+
+            // Open a new WebSocket connection
+            ws = new WebSocket("ws://technest.ddns.net:8001/ws");
+
+            ws.onopen = () => {
+                console.log("WebSocket connection opened successfully.");
+
+                // Send API Key to the WebSocket server after connection
+                const authMessage = {
+                    action: "authenticate",
+                    api_key: apiKey
+                };
+
+                ws.send(JSON.stringify(authMessage));
+            };
+
+            ws.onmessage = (event) => {
+                console.log("Data received from WebSocket:", event.data);
+                try {
+                    const message = JSON.parse(event.data);
+
+                    // Get the 'Power' from Energy Consumption data
+                    const power = message["Energy Consumption"] ? message["Energy Consumption"].Power : null;
+                    if (power !== null) {
+                        const timestamp = new Date();
+
+                        chartData.labels.push(timestamp);
+                        chartData.datasets[0].data.push(power);
+
+                        // Limit the number of data points on the graph
+                        if (chartData.labels.length > dataLimit) {
+                            chartData.labels.shift();
+                            chartData.datasets[0].data.shift();
+                        }
+
+                        // Update the chart
+                        machineDataChart.update();
+                    } else {
+                        console.warn("Received message does not have 'Power' field:", message);
+                    }
+                } catch (error) {
+                    console.error("Error parsing WebSocket data:", error);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+                document.getElementById('error-message').innerText = "Failed to connect to WebSocket.";
+            };
+
+            ws.onclose = () => {
+                console.log("WebSocket connection closed.");
+                document.getElementById('error-message').innerText = "Connection to WebSocket closed.";
+            };
+
+            const machineDataChart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            type: 'time',  // ใช้ time scale
+                            time: {
+                                unit: 'second',
+                                displayFormats: {
+                                    second: 'h:mm:ss a'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Power (W)'
+                            }
+                        }
+                    }
+
+
+
+                }
+
+
+            });
+
+        }
+
+        const authMessage = {
+            action: "authenticate",
+            api_key: apiKey
+        };
+        ws.send(JSON.stringify(authMessage));
+
+        ws.onmessage = (event) => {
+            console.log("Data received from WebSocket:", event.data);
+            try {
+                // ตรวจสอบว่าข้อมูลที่ได้รับเป็น JSON หรือไม่
+                if (event.data.startsWith("{") || event.data.startsWith("[")) {
+                    const message = JSON.parse(event.data);
+
+                    // Process your data here
+                    const power = message["Energy Consumption"] ? message["Energy Consumption"].Power : null;
+                    if (power !== null) {
+                        const timestamp = new Date();
+                        chartData.labels.push(timestamp);
+                        chartData.datasets[0].data.push(power);
+
+                        // Limit the number of data points on the graph
+                        if (chartData.labels.length > dataLimit) {
+                            chartData.labels.shift();
+                            chartData.datasets[0].data.shift();
+                        }
+
+                        // Update the chart
+                        machineDataChart.update();
+                    }
+                } else {
+                    console.warn("Received message is not in JSON format:", event.data);
+                    document.getElementById('error-message').innerText = "Unauthorized or invalid data received from WebSocket.";
+                }
+            } catch (error) {
+                console.error("Error parsing WebSocket data:", error);
+            }
+        };
+
+
+    </script>
+
+</body>
+
+</html>
